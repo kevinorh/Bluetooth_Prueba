@@ -7,8 +7,11 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.MediaStore;
+import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -30,7 +33,7 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button listen,send, listDevices;
+    Button listen,send, listDevices, chooseImage;
     ListView listView;
     TextView status;
     ImageView imageView;
@@ -50,6 +53,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String APP_NAME ="BTChat";
     private static final UUID MY_UUID = UUID.fromString("c52a2a66-381b-468a-8fa0-b651b29021b4");
+
+    private static final int PICK_IMAGE = 100;
+
+    private Bitmap bitmapImage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,10 +119,10 @@ public class MainActivity extends AppCompatActivity {
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //OPEN GALLERY
-                Bitmap bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.happyicon);
+
+                //Bitmap bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.happyicon);
                 ByteArrayOutputStream stream = new ByteArrayOutputStream();
-                bitmap.compress(Bitmap.CompressFormat.PNG,50,stream);
+                bitmapImage.compress(Bitmap.CompressFormat.JPEG,50,stream);
                 byte[] imageBytes = stream.toByteArray();
 
                 int subArraySize = 400;
@@ -129,7 +136,32 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+        chooseImage.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openGallery();
+            }
+        });
     }
+    private void openGallery(){
+        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.INTERNAL_CONTENT_URI);
+        startActivityForResult(intent,PICK_IMAGE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(resultCode == RESULT_OK && requestCode == PICK_IMAGE){
+            Uri imageUri = data.getData();
+            imageView.setImageURI(imageUri);
+            try {
+                bitmapImage = MediaStore.Images.Media.getBitmap(getContentResolver(), imageUri);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     Handler handler = new Handler(new Handler.Callback() {
         @Override
         public boolean handleMessage(Message msg) {
@@ -163,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
         status = (TextView) findViewById(R.id.status);
         listDevices = (Button) findViewById(R.id.listDevices);
         imageView = (ImageView) findViewById(R.id.imageView);
+        chooseImage = (Button) findViewById(R.id.chooseImage);
 
     }
     private class ServerClass extends Thread{

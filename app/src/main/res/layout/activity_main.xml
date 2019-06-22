@@ -53,8 +53,8 @@
         android:visibility="invisible"/>
     <ImageView
         android:id="@+id/imageView"
-        android:layout_width="300dp"
-        android:layout_height="300dp"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
         android:layout_margin="15dp"
         android:src="@drawable/seriusicon"
         app:layout_constraintBottom_toTopOf="@id/send"
@@ -69,6 +69,14 @@
         android:layout_margin="15dp"
         android:visibility="invisible"
         />
+    <Button
+        android:id="@+id/chooseImage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_margin="15dp"
+        android:text="Choose Image"/>
     <Button
         android:id="@+id/send"
         android:layout_width="wrap_content"
