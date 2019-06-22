@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
@@ -14,12 +16,15 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,8 +32,8 @@ public class MainActivity extends AppCompatActivity {
 
     Button listen,send, listDevices;
     ListView listView;
-    TextView msg_box, status;
-    EditText writeMsg;
+    TextView status;
+    ImageView imageView;
 
     BluetoothAdapter bluetoothAdapter;
     BluetoothDevice[] btArray;
@@ -107,8 +112,21 @@ public class MainActivity extends AppCompatActivity {
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String string = String.valueOf(writeMsg.getText());
-                sendRecieve.write(string.getBytes());
+                //OPEN GALLERY
+                Bitmap bitmap = BitmapFactory.decodeResource(getResources(),R.drawable.happyicon);
+                ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                bitmap.compress(Bitmap.CompressFormat.PNG,50,stream);
+                byte[] imageBytes = stream.toByteArray();
+
+                int subArraySize = 400;
+
+                sendRecieve.write(String.valueOf(imageBytes.length).getBytes());
+
+                for (int i=0; i<imageBytes.length;i+=subArraySize){
+                    byte[] tempArray;
+                    tempArray = Arrays.copyOfRange(imageBytes,i,Math.min(imageBytes.length,i+subArraySize));
+                    sendRecieve.write(tempArray);
+                }
             }
         });
     }
@@ -129,9 +147,10 @@ public class MainActivity extends AppCompatActivity {
                     status.setText("Connection Failed");
                     break;
                 case STATE_MESSAGE_RECEIVED:
-                    byte[] readBuff = (byte[]) msg.obj;
-                    String tempMsg = new String(readBuff,0,msg.arg1);
-                    msg_box.setText(tempMsg);
+                    byte [] readbuff = (byte[]) msg.obj;
+                    Bitmap bitmap = BitmapFactory.decodeByteArray(readbuff,0,msg.arg1);
+
+                    imageView.setImageBitmap(bitmap);
                     break;
             }
             return true;
@@ -141,10 +160,9 @@ public class MainActivity extends AppCompatActivity {
         listen = (Button) findViewById(R.id.listen);
         send = (Button) findViewById(R.id.send);
         listView = (ListView) findViewById(R.id.listView);
-        msg_box = (TextView) findViewById(R.id.msg);
         status = (TextView) findViewById(R.id.status);
-        writeMsg = (EditText) findViewById(R.id.writemsg);
         listDevices = (Button) findViewById(R.id.listDevices);
+        imageView = (ImageView) findViewById(R.id.imageView);
 
     }
     private class ServerClass extends Thread{
@@ -243,21 +261,48 @@ public class MainActivity extends AppCompatActivity {
             outputStream = tempOut;
         }
         public void run(){
-            byte[] buffer = new byte[1024];
-            int bytes;
+            byte[] buffer = null;
+            int numberOfBytes = 0;
+            int index = 0;
+            boolean flag = true;
 
             while (true){
-                try {
-                    bytes = inputStream.read(buffer);
-                    handler.obtainMessage(STATE_MESSAGE_RECEIVED,bytes,-1,buffer).sendToTarget();
-                } catch (IOException e) {
-                    e.printStackTrace();
+                if(flag)
+                {
+                    try {
+                        byte [] temp = new byte[inputStream.available()];
+                        if(inputStream.read(temp)>0)
+                        {
+                            numberOfBytes = Integer.parseInt(new String(temp, "UTF-8"));
+                            buffer = new byte[numberOfBytes];
+                            flag = false;
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }else {
+                    byte [] data = new byte[0];
+                    try {
+                        data = new byte[inputStream.available()];
+                        int numbers = inputStream.read(data);
+
+                        System.arraycopy(data,0,buffer,index,numbers);
+                        index = index+numbers;
+
+                        if(index== numberOfBytes){
+                            handler.obtainMessage(STATE_MESSAGE_RECEIVED,numberOfBytes,-1,buffer).sendToTarget();
+                            flag = true;
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }
         public void write(byte[] bytes){
             try {
                 outputStream.write(bytes);
+                outputStream.flush();
             } catch (IOException e) {
                 e.printStackTrace();
             }
