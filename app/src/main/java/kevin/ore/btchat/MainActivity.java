@@ -4,12 +4,18 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
+import android.os.Vibrator;
 import android.provider.MediaStore;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
@@ -31,15 +37,16 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     Button listen,send, listDevices, chooseImage;
     ListView listView;
-    TextView status;
+    TextView status,msg;
     ImageView imageView;
 
     BluetoothAdapter bluetoothAdapter;
     BluetoothDevice[] btArray;
+    int device_selected;
 
     SendRecieve sendRecieve;
 
@@ -58,6 +65,19 @@ public class MainActivity extends AppCompatActivity {
 
     private Bitmap bitmapImage;
 
+    //Sensor part
+    private float lastX, lastY, lastZ;
+    private double GForce_value = 0;
+    private float deltaX = 0;
+    private float deltaY = 0;
+    private float deltaZ = 0;
+
+    private SensorManager sensorManager;
+    private Sensor accelerometer;
+    private float vibrateThreshold = 0;
+    public Vibrator v;
+    private int TIMES_SEND = 1;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -75,6 +95,17 @@ public class MainActivity extends AppCompatActivity {
         }
 
         implementListeners();
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
+            // success! we have an accelerometer
+
+            accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+            sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+            vibrateThreshold = accelerometer.getMaximumRange() / 2;
+        } else {
+            // fai! we dont have an accelerometer!
+        }
+        v = (Vibrator) this.getSystemService(Context.VIBRATOR_SERVICE);
     }
 
     private void implementListeners(){
@@ -109,6 +140,7 @@ public class MainActivity extends AppCompatActivity {
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                device_selected = position;
                 ClientClass clientClass = new ClientClass(btArray[position]);
                 clientClass.start();
 
@@ -140,6 +172,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 openGallery();
+                TIMES_SEND=1;
             }
         });
     }
@@ -155,6 +188,7 @@ public class MainActivity extends AppCompatActivity {
             Uri imageUri = data.getData();
             imageView.setImageURI(imageUri);
             try {
+                bitmapImage = null;
                 bitmapImage = MediaStore.Images.Media.getBitmap(getContentResolver(), imageUri);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -181,8 +215,8 @@ public class MainActivity extends AppCompatActivity {
                 case STATE_MESSAGE_RECEIVED:
                     byte [] readbuff = (byte[]) msg.obj;
                     Bitmap bitmap = BitmapFactory.decodeByteArray(readbuff,0,msg.arg1);
-
                     imageView.setImageBitmap(bitmap);
+                    btArray = null;
                     break;
             }
             return true;
@@ -196,8 +230,52 @@ public class MainActivity extends AppCompatActivity {
         listDevices = (Button) findViewById(R.id.listDevices);
         imageView = (ImageView) findViewById(R.id.imageView);
         chooseImage = (Button) findViewById(R.id.chooseImage);
+        msg = (TextView) findViewById(R.id.msg);
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        //msg.setText(Double.toString(GForce_value));
+        // get the change of the x,y,z values of the accelerometer
+        deltaX = Math.abs(lastX - event.values[0])/SensorManager.GRAVITY_EARTH;
+        deltaY = Math.abs(lastY - event.values[1])/SensorManager.GRAVITY_EARTH;
+        deltaZ = Math.abs(lastZ - event.values[2])/SensorManager.GRAVITY_EARTH;
+
+        lastX = event.values[0];
+        lastY = event.values[1];
+        lastZ = event.values[2];
+
+        GForce_value = (float) Math.sqrt((deltaX*deltaX)+(deltaY*deltaY)+(deltaZ*deltaZ));
+
+        if (GForce_value>2.5 && TIMES_SEND == 1) {
+            v.vibrate(50);
+            try {
+
+                ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                bitmapImage.compress(Bitmap.CompressFormat.JPEG, 50, stream);
+                byte[] imageBytes = stream.toByteArray();
+
+                int subArraySize = 400;
+
+                sendRecieve.write(String.valueOf(imageBytes.length).getBytes());
+                TIMES_SEND++;
+                for (int i = 0; i < imageBytes.length; i += subArraySize) {
+                    byte[] tempArray;
+                    tempArray = Arrays.copyOfRange(imageBytes, i, Math.min(imageBytes.length, i + subArraySize));
+                    sendRecieve.write(tempArray);
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
 
     }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
+
     private class ServerClass extends Thread{
         private BluetoothServerSocket serverSocket;
 
@@ -314,9 +392,9 @@ public class MainActivity extends AppCompatActivity {
                         e.printStackTrace();
                     }
                 }else {
-                    byte [] data = new byte[0];
+
                     try {
-                        data = new byte[inputStream.available()];
+                        byte[] data = new byte[inputStream.available()];
                         int numbers = inputStream.read(data);
 
                         System.arraycopy(data,0,buffer,index,numbers);
